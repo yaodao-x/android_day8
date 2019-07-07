@@ -1,8 +1,14 @@
 package com.bytedance.camera.demo;
 
+import android.content.Intent;
 import android.hardware.Camera;
+import android.media.CamcorderProfile;
 import android.media.MediaRecorder;
+import android.media.MediaScannerConnection;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.Surface;
@@ -10,21 +16,31 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.Window;
 import android.view.WindowManager;
+import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.List;
 
+import static android.hardware.Camera.CameraInfo.CAMERA_FACING_BACK;
+import static android.hardware.Camera.CameraInfo.CAMERA_FACING_FRONT;
 import static com.bytedance.camera.demo.utils.Utils.MEDIA_TYPE_IMAGE;
+import static com.bytedance.camera.demo.utils.Utils.MEDIA_TYPE_VIDEO;
+import static com.bytedance.camera.demo.utils.Utils.SYSTEM_TYPE_IMAGE;
+import static com.bytedance.camera.demo.utils.Utils.SYSTEM_TYPE_VIDEO;
 import static com.bytedance.camera.demo.utils.Utils.getOutputMediaFile;
 
 public class CustomCameraActivity extends AppCompatActivity {
 
     private SurfaceView mSurfaceView;
     private Camera mCamera;
+    private MediaRecorder mMediaRecorder;
+    private File image_file;
+    private File video_file;
 
-    private int CAMERA_TYPE = Camera.CameraInfo.CAMERA_FACING_BACK;
+
+    private int CAMERA_TYPE = CAMERA_FACING_BACK;
 
     private boolean isRecording = false;
 
@@ -34,15 +50,44 @@ public class CustomCameraActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setContentView(R.layout.activity_custom_camera);
 
+
+        mCamera = getCamera(CAMERA_FACING_BACK);
         mSurfaceView = findViewById(R.id.img);
         //todo 给SurfaceHolder添加Callback
+        SurfaceHolder surfaceHolder = mSurfaceView.getHolder();
+        surfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
+        surfaceHolder.addCallback(new SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(SurfaceHolder surfaceHolder) {
+                try {
+                    mCamera.setPreviewDisplay(surfaceHolder);
+
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                mCamera.startPreview();
+            }
+
+            @Override
+            public void surfaceChanged(SurfaceHolder surfaceHolder, int i, int i1, int i2) {
+
+            }
+
+            @Override
+            public void surfaceDestroyed(SurfaceHolder surfaceHolder) {
+                mCamera.stopPreview();
+                mCamera.release();
+                mCamera = null;
+            }
+        });
+
 
         findViewById(R.id.btn_picture).setOnClickListener(v -> {
             //todo 拍一张照片
+            mCamera.takePicture(null, null, mPicture);
         });
 
         findViewById(R.id.btn_record).setOnClickListener(v -> {
@@ -50,18 +95,57 @@ public class CustomCameraActivity extends AppCompatActivity {
             if (isRecording) {
                 //todo 停止录制
                 isRecording = false;
+                releaseMediaRecorder();
+                mCamera.lock();
+                sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(video_file)));
+
             } else {
                 //todo 录制
+                isRecording = true;
+                prepareVideoRecorder();
+                startPreview(mSurfaceView.getHolder());
+                try {
+                    mMediaRecorder.prepare();
+                    mMediaRecorder.start();
+                } catch (Exception e) {
+                    releaseMediaRecorder();
+                }
             }
         });
 
         findViewById(R.id.btn_facing).setOnClickListener(v -> {
             //todo 切换前后摄像头
+            if (CAMERA_TYPE == CAMERA_FACING_BACK) {
+                CAMERA_TYPE = CAMERA_FACING_FRONT;
+                mCamera = getCamera(CAMERA_FACING_FRONT);
+            } else {
+                CAMERA_TYPE = CAMERA_FACING_BACK;
+                mCamera = getCamera(CAMERA_FACING_BACK);
+            }
+            try {
+                mCamera.setPreviewDisplay(surfaceHolder);
+
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            mCamera.startPreview();
         });
 
         findViewById(R.id.btn_zoom).setOnClickListener(v -> {
-            //todo 调焦，需要判断手机是否支持
+            Camera.Parameters parameters = mCamera.getParameters();
+            if (parameters.isZoomSupported()) {
+                int zoom = parameters.getZoom();
+                if ((zoom = (zoom + 1) * 2) >= parameters.getMaxZoom()) {
+                    zoom = 0;
+                }
+                parameters.setZoom(zoom);
+                mCamera.setParameters(parameters);
+            } else {
+                Toast.makeText(CustomCameraActivity.this,
+                        "Zoom is not supported in your device", Toast.LENGTH_LONG);
+            }
         });
+
     }
 
     public Camera getCamera(int position) {
@@ -72,7 +156,8 @@ public class CustomCameraActivity extends AppCompatActivity {
         Camera cam = Camera.open(position);
 
         //todo 摄像头添加属性，例是否自动对焦，设置旋转方向等
-
+        rotationDegree = getCameraDisplayOrientation(position);
+        cam.setDisplayOrientation(rotationDegree);
         return cam;
     }
 
@@ -107,7 +192,7 @@ public class CustomCameraActivity extends AppCompatActivity {
         }
 
         int result;
-        if (info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
+        if (info.facing == CAMERA_FACING_FRONT) {
             result = (info.orientation + degrees) % DEGREE_360;
             result = (DEGREE_360 - result) % DEGREE_360;  // compensate the mirror
         } else {  // back-facing
@@ -119,37 +204,56 @@ public class CustomCameraActivity extends AppCompatActivity {
 
     private void releaseCameraAndPreview() {
         //todo 释放camera资源
+        mCamera.stopPreview();
+        mCamera.release();
+        mCamera = null;
     }
 
     Camera.Size size;
 
     private void startPreview(SurfaceHolder holder) {
         //todo 开始预览
+        mMediaRecorder.setPreviewDisplay(holder.getSurface());
+        mMediaRecorder.setOrientationHint(rotationDegree);
     }
 
 
-    private MediaRecorder mMediaRecorder;
-
     private boolean prepareVideoRecorder() {
         //todo 准备MediaRecorder
-
+        mMediaRecorder = new MediaRecorder();
+        mCamera.unlock();
+        mMediaRecorder.setCamera(mCamera);
+        mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.CAMCORDER);
+        mMediaRecorder.setVideoSource(MediaRecorder.VideoSource.CAMERA);
+        mMediaRecorder.setProfile(CamcorderProfile.get(CamcorderProfile.QUALITY_HIGH));
+        video_file = getOutputMediaFile(SYSTEM_TYPE_VIDEO);
+        mMediaRecorder.setOutputFile(video_file.toString());
         return true;
     }
 
 
     private void releaseMediaRecorder() {
         //todo 释放MediaRecorder
+        mMediaRecorder.stop();
+        mMediaRecorder.reset();
+        mMediaRecorder.release();
+        mMediaRecorder = null;
     }
 
 
     private Camera.PictureCallback mPicture = (data, camera) -> {
-        File pictureFile = getOutputMediaFile(MEDIA_TYPE_IMAGE);
-        if (pictureFile == null) {
+        image_file = getOutputMediaFile(SYSTEM_TYPE_IMAGE);
+        if (image_file == null) {
             return;
         }
         try {
-            FileOutputStream fos = new FileOutputStream(pictureFile);
+            FileOutputStream fos = new FileOutputStream(image_file);
+            Log.e("XJP", ": IMAGE_URL:" + image_file.getAbsolutePath());
+            Log.e("XJP", ": IMAGE_URL:" + Environment.getExternalStorageDirectory()
+                    + File.separator + Environment.DIRECTORY_DCIM
+                    + File.separator + "Camera" + File.separator);
             fos.write(data);
+            sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(image_file)));
             fos.close();
         } catch (IOException e) {
             Log.d("mPicture", "Error accessing file: " + e.getMessage());

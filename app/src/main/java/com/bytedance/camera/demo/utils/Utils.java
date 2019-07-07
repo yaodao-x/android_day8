@@ -96,6 +96,8 @@ public class Utils {
 
     public static final int MEDIA_TYPE_IMAGE = 1;
     public static final int MEDIA_TYPE_VIDEO = 2;
+    public static final int SYSTEM_TYPE_IMAGE = 3;
+    public static final int SYSTEM_TYPE_VIDEO = 4;
 
     /**
      * Create a File for saving an image or video
@@ -118,6 +120,16 @@ public class Utils {
         } else if (type == MEDIA_TYPE_VIDEO) {
             mediaFile = new File(mediaStorageDir.getPath() + File.separator +
                     "VID_" + timeStamp + ".mp4");
+        } else if (type == SYSTEM_TYPE_IMAGE) {
+            mediaFile = new File(Environment.getExternalStorageDirectory()
+                    + File.separator + Environment.DIRECTORY_DCIM
+                    + File.separator +
+                    "IMG_" + timeStamp + ".jpg");
+        } else if (type == SYSTEM_TYPE_VIDEO) {
+            mediaFile = new File(Environment.getExternalStorageDirectory()
+                    + File.separator + Environment.DIRECTORY_DCIM
+                    + File.separator + "Video" + File.separator +
+                    "VID_" + timeStamp + ".mp4");
         } else {
             return null;
         }
@@ -130,7 +142,7 @@ public class Utils {
     private static final int NUM_180 = 180;
     private static final int NUM_270 = 270;
 
-    public static  Bitmap rotateImage(Bitmap bitmap, String path) {
+    public static Bitmap rotateImage(Bitmap bitmap, String path) {
         ExifInterface srcExif = null;
         try {
             srcExif = new ExifInterface(path);
