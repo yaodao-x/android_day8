@@ -102,12 +102,16 @@ public class CustomCameraActivity extends AppCompatActivity {
             } else {
                 //todo 录制
                 isRecording = true;
+                Log.e("XJP", "onCreate: STEP1" );
                 prepareVideoRecorder();
+                Log.e("XJP", "onCreate: STEP2" );
                 startPreview(mSurfaceView.getHolder());
                 try {
                     mMediaRecorder.prepare();
                     mMediaRecorder.start();
                 } catch (Exception e) {
+                    Log.e("XJP", "onCreate: STEP3" );
+                    e.printStackTrace();
                     releaseMediaRecorder();
                 }
             }
@@ -234,7 +238,9 @@ public class CustomCameraActivity extends AppCompatActivity {
 
     private void releaseMediaRecorder() {
         //todo 释放MediaRecorder
+        Log.e("XJP", "onCreate: STEP4" );
         mMediaRecorder.stop();
+        Log.e("XJP", "onCreate: STEP5" );
         mMediaRecorder.reset();
         mMediaRecorder.release();
         mMediaRecorder = null;

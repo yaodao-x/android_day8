@@ -128,7 +128,7 @@ public class Utils {
         } else if (type == SYSTEM_TYPE_VIDEO) {
             mediaFile = new File(Environment.getExternalStorageDirectory()
                     + File.separator + Environment.DIRECTORY_DCIM
-                    + File.separator + "Video" + File.separator +
+                    + File.separator +
                     "VID_" + timeStamp + ".mp4");
         } else {
             return null;
